@@ -21,9 +21,9 @@ use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED, DXGI_RATIONAL, DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
-    CreateDXGIFactory2, IDXGIFactory2, IDXGISwapChain, IDXGISwapChain3, DXGI_SWAP_CHAIN_DESC,
-    DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH, DXGI_SWAP_EFFECT_FLIP_DISCARD,
-    DXGI_USAGE_RENDER_TARGET_OUTPUT,
+    CreateDXGIFactory2, IDXGIFactory2, IDXGISwapChain, IDXGISwapChain1, IDXGISwapChain3,
+    DXGI_PRESENT_PARAMETERS, DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH,
+    DXGI_SWAP_EFFECT_FLIP_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
 
 use super::DummyHwnd;
@@ -33,6 +33,13 @@ use crate::{perform_eject, util, Hooks, ImguiRenderLoop, EJECT_REQUESTED, HOOK_E
 
 type DXGISwapChainPresentType =
     unsafe extern "system" fn(this: IDXGISwapChain3, sync_interval: u32, flags: u32) -> HRESULT;
+
+type DXGISwapChainPresent1Type = unsafe extern "system" fn(
+    this: IDXGISwapChain3,
+    sync_interval: u32,
+    flags: u32,
+    present_parameters: *const DXGI_PRESENT_PARAMETERS,
+) -> HRESULT;
 
 type DXGISwapChainResizeBuffersType = unsafe extern "system" fn(
     this: IDXGISwapChain3,
@@ -51,6 +58,7 @@ type D3D12CommandQueueExecuteCommandListsType = unsafe extern "system" fn(
 
 struct Trampolines {
     dxgi_swap_chain_present: DXGISwapChainPresentType,
+    dxgi_swap_chain_present1: DXGISwapChainPresent1Type,
     dxgi_swap_chain_resize_buffers: DXGISwapChainResizeBuffersType,
     d3d12_command_queue_execute_command_lists: D3D12CommandQueueExecuteCommandListsType,
 }
@@ -235,6 +243,39 @@ unsafe extern "system" fn dxgi_swap_chain_present_impl(
     result
 }
 
+unsafe extern "system" fn dxgi_swap_chain_present1_impl(
+    swap_chain: IDXGISwapChain3,
+    sync_interval: u32,
+    flags: u32,
+    present_parameters: *const DXGI_PRESENT_PARAMETERS,
+) -> HRESULT {
+    let _hook_ejection_guard = HOOK_EJECTION_BARRIER.acquire_ejection_guard();
+    {
+        INITIALIZATION_CONTEXT.lock().insert_swap_chain(&swap_chain);
+    }
+
+    let Trampolines { dxgi_swap_chain_present1, .. } =
+        TRAMPOLINES.get().expect("DirectX 12 trampolines uninitialized");
+
+    if let Err(e) = render(&swap_chain) {
+        if e.code() == E_NOT_READY {
+            debug!("Waiting for the initialization context");
+        } else {
+            util::print_dxgi_debug_messages();
+            error!("Render error: {e:?}");
+        }
+    }
+
+    trace!("Call IDXGISwapChain1::Present1 trampoline");
+    let result = dxgi_swap_chain_present1(swap_chain, sync_interval, flags, present_parameters);
+
+    if EJECT_REQUESTED.load(Ordering::SeqCst) {
+        perform_eject();
+    }
+
+    result
+}
+
 unsafe extern "system" fn dxgi_swap_chain_resize_buffers_impl(
     p_this: IDXGISwapChain3,
     buffer_count: u32,
@@ -274,6 +315,7 @@ unsafe extern "system" fn d3d12_command_queue_execute_command_lists_impl(
 
 fn get_target_addrs() -> (
     DXGISwapChainPresentType,
+    DXGISwapChainPresent1Type,
     DXGISwapChainResizeBuffersType,
     D3D12CommandQueueExecuteCommandListsType,
 ) {
@@ -328,18 +370,21 @@ fn get_target_addrs() -> (
         },
     };
 
+    let swap_chain1: IDXGISwapChain1 = swap_chain.cast().unwrap();
     let present_ptr: DXGISwapChainPresentType =
         unsafe { mem::transmute(swap_chain.vtable().Present) };
+    let present1_ptr: DXGISwapChainPresent1Type =
+        unsafe { mem::transmute(swap_chain1.vtable().Present1) };
     let resize_buffers_ptr: DXGISwapChainResizeBuffersType =
         unsafe { mem::transmute(swap_chain.vtable().ResizeBuffers) };
     let cqecl_ptr: D3D12CommandQueueExecuteCommandListsType =
         unsafe { mem::transmute(command_queue.vtable().ExecuteCommandLists) };
 
-    (present_ptr, resize_buffers_ptr, cqecl_ptr)
+    (present_ptr, present1_ptr, resize_buffers_ptr, cqecl_ptr)
 }
 
 /// Hooks for DirectX 12.
-pub struct ImguiDx12Hooks([MhHook; 3]);
+pub struct ImguiDx12Hooks([MhHook; 4]);
 
 impl ImguiDx12Hooks {
     /// Construct a set of [`MhHook`]s that will render UI via the
@@ -347,6 +392,7 @@ impl ImguiDx12Hooks {
     ///
     /// The following functions are hooked:
     /// - `IDXGISwapChain3::Present`
+    /// - `IDXGISwapChain1::Present1`
     /// - `IDXGISwapChain3::ResizeBuffers`
     /// - `ID3D12CommandQueue::ExecuteCommandLists`
     ///
@@ -359,16 +405,23 @@ impl ImguiDx12Hooks {
     {
         let (
             dxgi_swap_chain_present_addr,
+            dxgi_swap_chain_present1_addr,
             dxgi_swap_chain_resize_buffers_addr,
             d3d12_command_queue_execute_command_lists_addr,
         ) = get_target_addrs();
 
         trace!("IDXGISwapChain::Present = {:p}", dxgi_swap_chain_present_addr as *const c_void);
+        trace!("IDXGISwapChain1::Present1 = {:p}", dxgi_swap_chain_present1_addr as *const c_void);
         let hook_present = MhHook::new(
             dxgi_swap_chain_present_addr as *mut _,
             dxgi_swap_chain_present_impl as *mut _,
         )
         .expect("couldn't create IDXGISwapChain::Present hook");
+        let hook_present1 = MhHook::new(
+            dxgi_swap_chain_present1_addr as *mut _,
+            dxgi_swap_chain_present1_impl as *mut _,
+        )
+        .expect("couldn't create IDXGISwapChain1::Present1 hook");
         let hook_resize_buffers = MhHook::new(
             dxgi_swap_chain_resize_buffers_addr as *mut _,
             dxgi_swap_chain_resize_buffers_impl as *mut _,
@@ -386,6 +439,9 @@ impl ImguiDx12Hooks {
             dxgi_swap_chain_present: mem::transmute::<*mut c_void, DXGISwapChainPresentType>(
                 hook_present.trampoline(),
             ),
+            dxgi_swap_chain_present1: mem::transmute::<*mut c_void, DXGISwapChainPresent1Type>(
+                hook_present1.trampoline(),
+            ),
             dxgi_swap_chain_resize_buffers: mem::transmute::<
                 *mut c_void,
                 DXGISwapChainResizeBuffersType,
@@ -396,7 +452,7 @@ impl ImguiDx12Hooks {
             >(hook_cqecl.trampoline()),
         });
 
-        Self([hook_present, hook_resize_buffers, hook_cqecl])
+        Self([hook_present, hook_present1, hook_resize_buffers, hook_cqecl])
     }
 }
 

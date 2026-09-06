@@ -6,13 +6,15 @@
 // Changes: log the build version and both repository URLs at startup, so a
 // user-submitted log file identifies which build produced it.
 
-use std::fs::File;
 use std::{ffi, panic, thread, time};
 
 use hudhook::hooks::dx12::ImguiDx12Hooks;
 use hudhook::tracing;
-use hudhook::windows::Win32::{Foundation::HINSTANCE, System::SystemServices::DLL_PROCESS_ATTACH};
-use utils::{get_dll_dir, setup_tracing};
+use hudhook::windows::Win32::{
+    Foundation::{BOOL, HINSTANCE},
+    System::SystemServices::DLL_PROCESS_ATTACH,
+};
+use utils::setup_tracing;
 
 mod config;
 mod font;
@@ -24,7 +26,11 @@ mod wukong;
 
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "stdcall" fn DllMain(hmodule: HINSTANCE, reason: u32, _: *mut ffi::c_void) {
+pub unsafe extern "system" fn DllMain(
+    hmodule: HINSTANCE,
+    reason: u32,
+    _: *mut ffi::c_void,
+) -> BOOL {
     if reason == DLL_PROCESS_ATTACH {
         // 初始化日志系统，输出到文件和控制台
         setup_tracing();
@@ -32,7 +38,7 @@ pub extern "stdcall" fn DllMain(hmodule: HINSTANCE, reason: u32, _: *mut ffi::c_
         tracing::info!("DllMain: DLL_PROCESS_ATTACH");
         // 版本与出处，用于识别用户反馈的日志来自哪个构建
         tracing::info!(
-            "wukong-minimap {} | fork: github.com/Ouye/wukong-minimap | upstream: github.com/jaskang/wukong-minimap (Apache-2.0)",
+            "wukong-minimap {} | fork: github.com/CNDDVP/wukong-minimap | upstream: github.com/jaskang/wukong-minimap (Apache-2.0)",
             env!("CARGO_PKG_VERSION")
         );
 
@@ -65,4 +71,6 @@ pub extern "stdcall" fn DllMain(hmodule: HINSTANCE, reason: u32, _: *mut ffi::c_
             }
         });
     }
+
+    BOOL::from(true)
 }

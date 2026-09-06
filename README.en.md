@@ -1,4 +1,4 @@
-# Black Myth: Wukong - Built-in Real-time Map (1.0.20+ branch)
+# Black Myth: Wukong - Built-in Real-time Map (1.0.21+ branch)
 
 ![alt text](./docs/banner.png)
 
@@ -8,34 +8,27 @@
 > hundred hand-collected map points — is [@jaskang](https://github.com/jaskang)'s.
 > **Please go star the original repository first.**
 >
-> This branch does one thing: **make it work again on game versions after the
-> 1.0.20 update of October 2025**, plus two optional extras: a heading-up map
-> mode and a record of where you have walked. The minimap's gameplay and visual
-> design are untouched.
+> This branch maintains: **support for 1.0.21+ (Steam Build 21393610) and beyond**,
+> plus orientation mode, walking trail records, radar indicators for nearby enemies/items,
+> and stability fixes.
 >
 > Every modified file carries a header saying what changed in it and where it came from.
 
-- Download: [releases](https://github.com/Ouye/wukong-minimap/releases)
+- Download: [releases](https://github.com/CNDDVP/wukong-minimap/releases)
 - Original project: [jaskang/wukong-minimap](https://github.com/jaskang/wukong-minimap) · [BiliBili demo video](https://www.bilibili.com/video/BV1Y1KueREho/) · [Nexusmods](https://www.nexusmods.com/blackmythwukong/mods/1172)
 
 Switch language: [中文](README.md)
 
 ## What this branch changes
 
-The 1.0.20 game update (2025-10-13) triggered two **independent** failures:
+**1. Full adaptation for 1.0.21+ (Game build 1.0.21.23831 / Steam Build 21393610)**
+- Updated memory offsets: `GObjects` (`0x1D47AF90`), `FName::AppendString` (`0x0CB63140`), `ProcessEvent` (`0x0CCF8400`).
+- Fixed MSVC x64 ABI `DllMain` entrypoint calling convention and return value issue preventing premature DLL unloads and `0xc0000005` access violations.
+- Runtime dynamic signature scanning for robustness across subsequent minor patches.
 
-**1. The plugin did not work at all.** Relinking the executable invalidated every SDK
-offset. The SDK has been regenerated, and the global addresses are now resolved by
-**runtime signature scanning** instead of being baked in at compile time, which should
-survive future minor game updates much better.
-
-**2. The minimap texture rendered as garbage.** This one has nothing to do with the
-plugin's own code — the new game build's D3D12 environment exposed a long-standing
-problem in the rendering library. A two-way controlled experiment pinned the trigger
-down to **the texture being fully opaque (alpha == 255)**, and it is now worked around.
-
-The trail of where you have walked is also recorded now, per map area, and drawn on
-both the minimap and the big map.
+**2. Enhancements**
+- Recorded walking trail per map area, rendered across both minimap and full map.
+- Nearby radar targets (enemies, neutral units, dropped items, collectibles) with elevation markers.
 
 Along the way: four general bugs fixed in the rendering library, resident memory cut
 from 368 MB to 16 MB, and the install package from 96 MB to 23 MB.

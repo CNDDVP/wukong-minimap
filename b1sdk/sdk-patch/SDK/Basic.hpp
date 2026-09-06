@@ -60,10 +60,10 @@ namespace Offsets
 	 * The commented values are what the dump contained (folder
 	 * "5.0.0-0+++UE5+Release-5.0-b1", dumped 2025-11).
 	 * ------------------------------------------------------------------ */
-	inline int32 GObjects             = 0x0;   // dumped: 0x1D47ED10
-	inline int32 AppendString         = 0x0;   // dumped: 0x0CB65030
+	inline int32 GObjects             = 0x1D47AF90;   // 1.0.21: 0x1D47AF90 (1.0.20 was 0x1D47ED10)
+	inline int32 AppendString         = 0x0CB63140;   // 1.0.21: 0x0CB63140 (1.0.20 was 0x0CB65030)
 	inline int32 GNames               = 0x0;   // dumped: 0x1D3DFCC0
-	inline int32 ProcessEvent         = 0x0;   // dumped: 0x0CCFA2F0  (address, only needed for hooking)
+	inline int32 ProcessEvent         = 0x0CCF8400;   // 1.0.21: 0x0CCF8400 (1.0.20 was 0x0CCFA2F0)
 
 	/* GWorld MUST stay constexpr: Engine_functions.cpp uses it inside an
 	 * `if constexpr`. Keeping it 0 disables the hard-coded-pointer path and

@@ -1,4 +1,4 @@
-﻿// This file was modified in a fork of jaskang/wukong-minimap.
+// This file was modified in a fork of jaskang/wukong-minimap.
 //
 // Upstream: https://github.com/jaskang/wukong-minimap (Apache-2.0)
 // Fork:     https://github.com/Ouye/wukong-minimap
@@ -110,11 +110,10 @@ extern "C" __declspec(dllexport) PlayerInfo getPlayerInfo()
 	return info;
 }
 
-// Values from the Dumper-7 dump in "5.0.0-0+++UE5+Release-5.0-b1" (2025-11).
-// Only used as a fallback when the signature scan fails.
-static const int32_t kDumpedGObjects     = 0x1D47ED10;
-static const int32_t kDumpedAppendString = 0x0CB65030;
-static const int32_t kDumpedProcessEvent = 0x0CCFA2F0;
+// Values for Black Myth: Wukong v1.0.21.23831 (BuildID 21393610)
+static const int32_t kDumpedGObjects     = 0x1D47AF90;
+static const int32_t kDumpedAppendString = 0x0CB63140;
+static const int32_t kDumpedProcessEvent = 0x0CCF8400;
 
 static void b1Log(const char *fmt, ...)
 {

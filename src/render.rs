@@ -32,7 +32,7 @@ use hudhook::{
     ImguiRenderLoop, RenderContext,
 };
 use hudhook::{
-    imgui::{Image, Key},
+    imgui::Key,
     tracing,
 };
 use image::{EncodableLayout, ImageFormat, RgbaImage};
@@ -47,7 +47,7 @@ const NO_POINTS: &[Point] = &[];
 // 原图里占 x 150..640、y 3695..3830，即 x 0.0375..0.1600、垂直中心 0.9407。
 //
 // 只能用 ASCII，内置字体没有中文字形。
-const FORK_CREDIT: &str = "1.0.20+ patch by Ouye@github";
+const FORK_CREDIT: &str = "1.0.21+ patch by CNDDVP@github";
 /// 文字左边缘，在 logo 右边缘 0.160 之后留出底色的间距
 const CREDIT_X: f32 = 0.183;
 /// 文字垂直中心，与 logo 对齐
@@ -205,7 +205,7 @@ macro_rules! png_texture {
 }
 
 pub struct MiniMap {
-    gilrs: Mutex<Gilrs>,
+    gilrs: Mutex<Option<Gilrs>>,
     current_gamepad: Option<GamepadId>,
     textures: Textures,
     /// 底图的后台解码器。换图不再阻塞渲染线程。
@@ -305,7 +305,7 @@ impl MiniMap {
         // 用户打开就知道有哪些能改。
         config.save(&Config::path(&dll_dir));
 
-        let gilrs = Gilrs::new().unwrap();
+        let gilrs = Gilrs::new().ok();
         Self {
             gilrs: Mutex::new(gilrs),
             current_gamepad: None,
@@ -1177,21 +1177,22 @@ impl MiniMap {
             self.is_show_main = !self.is_show_main;
             // wukong::toggle_mouse_cursor(self.is_show_main);
         }
-        if let Ok(mut gilrs) = self.gilrs.lock() {
-            // Examine new events
-            while let Some(gilrs::Event { id, event, .. }) = gilrs.next_event() {
-                self.current_gamepad = Some(id);
-                tracing::debug!("gilrs event from {}: {:?}", id, event);
-                if let gilrs::EventType::ButtonPressed(button, code) = event {
-                    let gamepad = gilrs.gamepad(id);
-                    if gamepad.is_pressed(gilrs::Button::RightTrigger) {
-                        match button {
-                            gilrs::Button::DPadDown => {
-                                self.is_show_main = !self.is_show_main;
-                                // wukong::toggle_mouse_cursor(self.is_show_main);
-                                tracing::debug!("gamepad: toggle main map");
+        if let Ok(mut gilrs_guard) = self.gilrs.lock() {
+            if let Some(ref mut gilrs) = *gilrs_guard {
+                // Examine new events
+                while let Some(gilrs::Event { id, event, .. }) = gilrs.next_event() {
+                    self.current_gamepad = Some(id);
+                    tracing::debug!("gilrs event from {}: {:?}", id, event);
+                    if let gilrs::EventType::ButtonPressed(button, _code) = event {
+                        let gamepad = gilrs.gamepad(id);
+                        if gamepad.is_pressed(gilrs::Button::RightTrigger) {
+                            match button {
+                                gilrs::Button::DPadDown => {
+                                    self.is_show_main = !self.is_show_main;
+                                    tracing::debug!("gamepad: toggle main map");
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
                     }
                 }

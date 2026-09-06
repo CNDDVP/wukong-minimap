@@ -10,7 +10,7 @@
 use hudhook::tracing;
 use image::{ImageFormat, ImageReader, RgbaImage};
 use serde::{Deserialize, Serialize};
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::sync::Mutex;
 use std::{collections::HashMap, io::Cursor, path::PathBuf};
 use time::{macros::format_description, UtcOffset};
@@ -56,63 +56,78 @@ pub struct MapInfo {
 }
 
 pub fn get_dll_dir() -> PathBuf {
-    let dll_path = hudhook::util::get_dll_path().unwrap();
-    dll_path.parent().unwrap().to_path_buf()
+    if let Some(dll_path) = hudhook::util::get_dll_path() {
+        if let Some(parent) = dll_path.parent() {
+            return parent.to_path_buf();
+        }
+    }
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            return parent.to_path_buf();
+        }
+    }
+    PathBuf::from(".")
 }
 
 pub fn setup_tracing() {
-    // hudhook::alloc_console().unwrap();
-    // hudhook::enable_console_colors();
-    // dotenv::dotenv().ok();
-    // Release default: errors only, plus this crate's own startup banner, so
-    // that a log a user sends in is short enough to read and identifies the
-    // build. Set RUST_LOG=debug before launching the game for the full trace.
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "info,hudhook=info,wukong_minimap=info");
     }
 
-    let log_file = hudhook::util::get_dll_path()
-        .map(|mut path| {
-            path.set_extension("log");
-            path
+    let dll_dir = get_dll_dir();
+    let log_file_path = dll_dir.join("wukong_minimap.log");
+    let log_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&log_file_path)
+        .or_else(|_| {
+            let mut temp = std::env::temp_dir();
+            temp.push("wukong_minimap.log");
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&temp)
         })
-        .and_then(|path| File::create(path).ok())
-        .unwrap();
+        .ok();
 
-    // 配置日志时间格式
-    // 配置时区为东8区，
+    // 配置日志时间格式为东8区
     let offset = UtcOffset::from_hms(8, 0, 0).unwrap_or(UtcOffset::UTC);
-    // 时间格式为  年-月-日 时:分:秒 格式
     let logger_time = OffsetTime::new(
         offset,
         format_description!("[year]-[month]-[day] [hour]:[minute]:[second]"),
     );
 
-    tracing_subscriber::registry()
-        .with(
-            fmt::layer().event_format(
-                fmt::format()
-                    .with_timer(logger_time.clone()) //打印时间
-                    .with_level(true)
-                    .with_thread_ids(true)
-                    .with_file(true)
-                    .with_line_number(true)
-                    .with_thread_names(true),
-            ),
-        )
-        .with(
+    let reg = tracing_subscriber::registry().with(
+        fmt::layer().event_format(
+            fmt::format()
+                .with_timer(logger_time.clone())
+                .with_level(true)
+                .with_thread_ids(true)
+                .with_file(true)
+                .with_line_number(true)
+                .with_thread_names(true),
+        ),
+    );
+
+    if let Some(file) = log_file {
+        let _ = reg.with(
             fmt::layer()
-                .with_timer(logger_time.clone()) //打印时间
+                .with_timer(logger_time.clone())
                 .with_thread_ids(true)
                 .with_file(true)
                 .with_line_number(true)
                 .with_thread_names(true)
-                .with_writer(Mutex::new(log_file))
+                .with_writer(Mutex::new(file))
                 .with_ansi(false)
                 .boxed(),
         )
         .with(EnvFilter::from_default_env())
-        .init();
+        .try_init();
+    } else {
+        let _ = reg.with(EnvFilter::from_default_env()).try_init();
+    }
 }
 
 pub fn image_with_bytes(bytes: &[u8], format: ImageFormat) -> RgbaImage {

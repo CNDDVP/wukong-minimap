@@ -18,24 +18,21 @@
 
 #include "b1sdk.h"
 
-extern "C" __declspec(dllexport) bool toggleMouseCursor(bool show)
+static bool toggleMouseCursorInternal(bool show)
 {
 	SDK::UWorld *World = SDK::UWorld::GetWorld();
 	if (!World)
 	{
-		printf_s("World is null\n");
 		return true;
 	}
 	SDK::UGameplayStatics *GameplayStatics = SDK::UGameplayStatics::GetDefaultObj();
 	if (!GameplayStatics)
 	{
-		printf_s("GameplayStatics is null\n");
 		return true;
 	}
 	SDK::APlayerController *playerController = GameplayStatics->GetPlayerController(World, 0);
 	if (!playerController)
 	{
-		printf_s("playerController is null\n");
 		return true;
 	}
 	playerController->bShowMouseCursor = show ? 1 : 0;
@@ -50,43 +47,41 @@ extern "C" __declspec(dllexport) bool toggleMouseCursor(bool show)
 	return show;
 }
 
-extern "C" __declspec(dllexport) PlayerInfo getPlayerInfo()
+extern "C" __declspec(dllexport) bool toggleMouseCursor(bool show)
 {
-	PlayerInfo info = {
-			-1.0f, // x
-			-1.0f, // y
-			-1.0f, // z
-			0.0f,	 // angle
-			0,		 // bIsLocalViewTarget
-			1,		 // bShowMouseCursor
-			1,		 // bIsMoveInputIgnored
-			""};
+	__try
+	{
+		return toggleMouseCursorInternal(show);
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		return show;
+	}
+}
 
+static bool getPlayerInfoInternal(PlayerInfo &info)
+{
 	SDK::UWorld *World = SDK::UWorld::GetWorld();
 	if (!World)
 	{
-		printf_s("World is null\n");
-		return info;
+		return false;
 	}
 	SDK::UGameplayStatics *GameplayStatics = SDK::UGameplayStatics::GetDefaultObj();
 	if (!GameplayStatics)
 	{
-		printf_s("GameplayStatics is null\n");
-		return info;
+		return false;
 	}
 
 	SDK::ACharacter *playerCharacter = SDK::UBGUFunctionLibrary::GetPlayerCharacter(World);
 	if (!playerCharacter)
 	{
-		printf_s("playerCharacter is null\n");
-		return info;
+		return false;
 	}
 
 	SDK::APlayerController *playerController = GameplayStatics->GetPlayerController(World, 0);
 	if (!playerController)
 	{
-		printf_s("playerController is null\n");
-		return info;
+		return false;
 	}
 
 	// 获取当前关卡名称
@@ -106,6 +101,30 @@ extern "C" __declspec(dllexport) PlayerInfo getPlayerInfo()
 	info.bShowMouseCursor = playerController->bShowMouseCursor;
 
 	info.bIsMoveInputIgnored = playerCharacter->IsMoveInputIgnored();
+
+	return true;
+}
+
+extern "C" __declspec(dllexport) PlayerInfo getPlayerInfo()
+{
+	PlayerInfo info = {
+			-1.0f, // x
+			-1.0f, // y
+			-1.0f, // z
+			0.0f,	 // angle
+			0,		 // bIsLocalViewTarget
+			1,		 // bShowMouseCursor
+			1,		 // bIsMoveInputIgnored
+			""};
+
+	__try
+	{
+		getPlayerInfoInternal(info);
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		// 关卡切换或对象销毁时静默防崩
+	}
 
 	return info;
 }
@@ -180,6 +199,9 @@ extern "C" __declspec(dllexport) void b1Init()
 		SDK::Offsets::ProcessEvent = kDumpedProcessEvent;
 		b1Log("[b1sdk] ProcessEvent = 0x%X (scan failed, using dumped value)\n", SDK::Offsets::ProcessEvent);
 	}
+
+	SDK::UObject::GObjects.InitManually((void *)((uintptr_t)baseModule + SDK::Offsets::GObjects));
+	SDK::FName::InitManually((void *)((uintptr_t)baseModule + SDK::Offsets::AppendString));
 
 	// ---- smoke test ----------------------------------------------------
 	// If the member offsets in the SDK no longer match the game, this is
@@ -258,41 +280,49 @@ namespace
 
 	void resolveRadarSymbols()
 	{
-		if (g_RadarResolved)
+		if (g_CharsUsable && g_ItemsUsable)
 			return;
-		g_RadarResolved = true;
 
-		g_AICharClass = SDK::UObject::FindClassFast("BGU_CharacterAI");
-		g_PlayerCharClass = SDK::UObject::FindClassFast("BGUPlayerCharacterCS");
-		g_InteractiveClass = SDK::UObject::FindClassFast("BGUInteractiveActorBase");
-		g_DropItemClass = SDK::UObject::FindClassFast("BGUDropItemActor");
-		g_CollectionClass = SDK::UObject::FindClassFast("BGUCollectionBase");
-		g_MeditationClass = SDK::UObject::FindClassFast("BGUMeditationPointBase");
+		if (!g_AICharClass) g_AICharClass = SDK::UObject::FindClassFast("BGU_CharacterAI");
+		if (!g_PlayerCharClass) g_PlayerCharClass = SDK::UObject::FindClassFast("BGUPlayerCharacterCS");
+		if (!g_InteractiveClass) g_InteractiveClass = SDK::UObject::FindClassFast("BGUInteractiveActorBase");
+		if (!g_DropItemClass) g_DropItemClass = SDK::UObject::FindClassFast("BGUDropItemActor");
+		if (!g_CollectionClass) g_CollectionClass = SDK::UObject::FindClassFast("BGUCollectionBase");
+		if (!g_MeditationClass) g_MeditationClass = SDK::UObject::FindClassFast("BGUMeditationPointBase");
 
-		if (SDK::UClass *funcLib = SDK::UObject::FindClassFast("BGUFunctionLibraryCS"))
+		if (!g_FuncLibCDO || !g_IsUnitDead || !g_IsEnemyTeam)
 		{
-			g_FuncLibCDO = funcLib->DefaultObject;
-			g_IsUnitDead = funcLib->GetFunction("BGUFunctionLibraryCS", "BGUIsUnitDead");
-			g_IsEnemyTeam = funcLib->GetFunction("BGUFunctionLibraryCS", "BGUIsEnemyTeam");
+			if (SDK::UClass *funcLib = SDK::UObject::FindClassFast("BGUFunctionLibraryCS"))
+			{
+				g_FuncLibCDO = funcLib->DefaultObject;
+				g_IsUnitDead = funcLib->GetFunction("BGUFunctionLibraryCS", "BGUIsUnitDead");
+				g_IsEnemyTeam = funcLib->GetFunction("BGUFunctionLibraryCS", "BGUIsEnemyTeam");
+			}
 		}
 
-		// 战斗状态在自动化测试的辅助库里，不是正经游戏逻辑用的接口。
-		// 拿不到就退化成"不知道有没有发现你"，不影响其它部分。
-		if (SDK::UClass *testLib = SDK::UObject::FindClassFast("AutoTestHelperLib"))
+		if (!g_TestLibCDO || !g_IsUnitInBattle)
 		{
-			g_TestLibCDO = testLib->DefaultObject;
-			g_IsUnitInBattle = testLib->GetFunction("AutoTestHelperLib", "IsUnitInBattle");
+			if (SDK::UClass *testLib = SDK::UObject::FindClassFast("AutoTestHelperLib"))
+			{
+				g_TestLibCDO = testLib->DefaultObject;
+				g_IsUnitInBattle = testLib->GetFunction("AutoTestHelperLib", "IsUnitInBattle");
+			}
 		}
 
+		bool prevChars = g_CharsUsable;
+		bool prevItems = g_ItemsUsable;
 		g_CharsUsable = g_AICharClass && g_PlayerCharClass && g_FuncLibCDO && g_IsUnitDead;
 		g_ItemsUsable = g_InteractiveClass != nullptr;
 
-		b1Log("[b1sdk] radar: AI=%p Player=%p Interactive=%p Drop=%p Collect=%p Meditation=%p\n",
-					(void *)g_AICharClass, (void *)g_PlayerCharClass, (void *)g_InteractiveClass,
-					(void *)g_DropItemClass, (void *)g_CollectionClass, (void *)g_MeditationClass);
-		b1Log("[b1sdk] radar: IsUnitDead=%p IsEnemyTeam=%p IsUnitInBattle=%p -> chars %s, items %s\n",
-					(void *)g_IsUnitDead, (void *)g_IsEnemyTeam, (void *)g_IsUnitInBattle,
-					g_CharsUsable ? "usable" : "DISABLED", g_ItemsUsable ? "usable" : "DISABLED");
+		if ((!prevChars && g_CharsUsable) || (!prevItems && g_ItemsUsable))
+		{
+			b1Log("[b1sdk] radar: symbols resolved -> AI=%p Player=%p Interactive=%p Drop=%p Collect=%p Meditation=%p\n",
+						(void *)g_AICharClass, (void *)g_PlayerCharClass, (void *)g_InteractiveClass,
+						(void *)g_DropItemClass, (void *)g_CollectionClass, (void *)g_MeditationClass);
+			b1Log("[b1sdk] radar: IsUnitDead=%p IsEnemyTeam=%p IsUnitInBattle=%p -> chars %s, items %s\n",
+						(void *)g_IsUnitDead, (void *)g_IsEnemyTeam, (void *)g_IsUnitInBattle,
+						g_CharsUsable ? "usable" : "DISABLED", g_ItemsUsable ? "usable" : "DISABLED");
+		}
 	}
 
 	bool callOneActor(SDK::UObject *cdo, SDK::UFunction *func, SDK::AActor *actor)

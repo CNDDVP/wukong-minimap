@@ -68,7 +68,7 @@ pub fn setup_tracing() {
     // that a log a user sends in is short enough to read and identifies the
     // build. Set RUST_LOG=debug before launching the game for the full trace.
     if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "error,wukong_minimap=info");
+        std::env::set_var("RUST_LOG", "info,hudhook=info,wukong_minimap=info");
     }
 
     let log_file = hudhook::util::get_dll_path()

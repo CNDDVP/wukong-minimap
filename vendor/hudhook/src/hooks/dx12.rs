@@ -115,25 +115,30 @@ impl InitializationContext {
         command_queue: &ID3D12CommandQueue,
     ) -> bool {
         let swap_chain_ptr = swap_chain.as_raw() as *mut *mut c_void;
-        let readable_ptrs = util::readable_region(swap_chain_ptr, 512);
+        let readable_ptrs = util::readable_region(swap_chain_ptr, 1024);
 
-        match readable_ptrs.iter().position(|&ptr| std::ptr::eq(ptr, command_queue.as_raw())) {
-            Some(idx) => {
-                debug!(
-                    "Found command queue pointer in swap chain struct at offset +0x{:x}",
-                    idx * mem::size_of::<usize>(),
-                );
-                true
-            },
-            None => {
-                warn!(
-                    "Couldn't find command queue pointer in swap chain struct ({} out of 512 \
-                     pointers were readable)",
-                    readable_ptrs.len()
-                );
-                false
-            },
+        if let Some(idx) = readable_ptrs.iter().position(|&ptr| std::ptr::eq(ptr, command_queue.as_raw())) {
+            tracing::info!(
+                "Found command queue pointer in swap chain struct at offset +0x{:x}",
+                idx * mem::size_of::<usize>(),
+            );
+            return true;
         }
+
+        let desc = command_queue.GetDesc();
+        if desc.Type == D3D12_COMMAND_LIST_TYPE_DIRECT {
+            tracing::info!(
+                "Command queue pointer not in swapchain struct, accepting DIRECT command queue via fallback: {:?}",
+                command_queue
+            );
+            return true;
+        }
+
+        warn!(
+            "Couldn't find command queue pointer in swap chain struct ({} out of 1024 pointers were readable) and queue is not DIRECT",
+            readable_ptrs.len()
+        );
+        false
     }
 }
 
@@ -155,6 +160,7 @@ unsafe fn init_pipeline() -> Result<Mutex<Pipeline<D3D12RenderEngine>>> {
     };
 
     let hwnd = util::try_out_param(|v| swap_chain.GetDesc(v)).map(|desc| desc.OutputWindow)?;
+    tracing::info!("Initializing D3D12 pipeline (hwnd: {:?}, queue: {:?})", hwnd, command_queue);
 
     let mut ctx = Context::create();
     let engine = D3D12RenderEngine::new(&command_queue, &mut ctx)?;
@@ -173,6 +179,7 @@ unsafe fn init_pipeline() -> Result<Mutex<Pipeline<D3D12RenderEngine>>> {
         INITIALIZATION_CONTEXT.lock().done();
     }
 
+    tracing::info!("D3D12 Pipeline initialized successfully!");
     Ok(Mutex::new(pipeline))
 }
 

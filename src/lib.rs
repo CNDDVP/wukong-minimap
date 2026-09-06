@@ -58,16 +58,22 @@ pub unsafe extern "system" fn DllMain(
         }));
 
         thread::spawn(move || {
+            tracing::info!("Background hook thread started, waiting 10s...");
             // 延迟 10 秒启动
             thread::sleep(time::Duration::from_secs(10));
+            tracing::info!("Initializing MiniMap...");
+            let minimap = render::MiniMap::new();
+            tracing::info!("MiniMap created, applying Hudhook DX12 hooks...");
             if let Err(e) = ::hudhook::Hudhook::builder()
-                .with::<ImguiDx12Hooks>(render::MiniMap::new())
+                .with::<ImguiDx12Hooks>(minimap)
                 .with_hmodule(hmodule)
                 .build()
                 .apply()
             {
                 tracing::error!("Couldn't apply hooks: {e:?}");
                 ::hudhook::eject();
+            } else {
+                tracing::info!("Hudhook DX12 hooks applied successfully!");
             }
         });
     }

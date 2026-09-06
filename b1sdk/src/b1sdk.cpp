@@ -111,9 +111,9 @@ extern "C" __declspec(dllexport) PlayerInfo getPlayerInfo()
 }
 
 // Values for Black Myth: Wukong v1.0.21.23831 (BuildID 21393610)
-static const int32_t kDumpedGObjects     = 0x1D47AF90;
-static const int32_t kDumpedAppendString = 0x0CB63140;
-static const int32_t kDumpedProcessEvent = 0x0CCF8400;
+static const int32_t kDumpedGObjects     = 0x1D47BB90;
+static const int32_t kDumpedAppendString = 0x0CB63D40;
+static const int32_t kDumpedProcessEvent = 0x0CCF9000;
 
 static void b1Log(const char *fmt, ...)
 {
@@ -124,6 +124,14 @@ static void b1Log(const char *fmt, ...)
 	va_end(args);
 	OutputDebugStringA(buf);
 	printf_s("%s", buf);
+
+	FILE *f = nullptr;
+	if (fopen_s(&f, "wukong_minimap.log", "a") == 0 && f)
+	{
+		fputs(buf, f);
+		fflush(f);
+		fclose(f);
+	}
 }
 
 extern "C" __declspec(dllexport) void b1Init()

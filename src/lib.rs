@@ -22,6 +22,7 @@ mod maploader;
 mod render;
 mod trail;
 mod utils;
+mod version_proxy;
 mod wukong;
 
 #[no_mangle]
@@ -32,6 +33,9 @@ pub unsafe extern "system" fn DllMain(
     _: *mut ffi::c_void,
 ) -> BOOL {
     if reason == DLL_PROCESS_ATTACH {
+        // Initialize version.dll proxy immediately so forwarded calls succeed
+        version_proxy::init_proxy();
+
         // 初始化日志系统，输出到文件和控制台
         setup_tracing();
 

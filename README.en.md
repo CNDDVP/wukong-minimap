@@ -136,20 +136,15 @@ Local Files).
 
 This plugin includes the following files:
 
-- `wukong_minimap.dll` — the plugin itself
-- `dwmapi.dll` — the loader; proxies the system DLL to load `wukong_minimap.dll`
+- `version.dll` — native system proxy loader (proxies Windows `version.dll` directly without external loader binaries, completely eliminating crashes with Stardock Groupy, DWM window hooks, and overlays)
+- `wukong_minimap.dll` — the core plugin
 - `maps` — the map folder
 
-If you have another way to load `wukong_minimap.dll`, you can skip `dwmapi.dll` entirely.
-
-## For UE4SS users
-
-UE4SS ships its own `dwmapi.dll` which intercepts the same system APIs and stops the
-plugin from loading. Use the `dwmapi.dll` from wukong-minimap instead.
+> **Note**: If you previously had an older `dwmapi.dll` in your game directory, make sure to delete it.
 
 ## Uninstallation
 
-Delete `wukong_minimap.dll`.
+Delete `version.dll` and `wukong_minimap.dll`.
 
 ## Building from source
 

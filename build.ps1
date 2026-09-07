@@ -192,16 +192,22 @@ Write-Host ("`n  OK: {0} ({1:N1} MB)" -f $dll, ((Get-Item $dll).Length / 1MB)) -
 if ($Install) {
     if (-not (Test-Path $Install)) { throw "install path not found: $Install" }
     Step "installing into $Install"
-    foreach ($n in 'wukong_minimap.dll', 'wukong_minimap.log') {
+    foreach ($n in 'version.dll', 'wukong_minimap.dll', 'wukong_minimap.log') {
         $old = Join-Path $Install $n
         if (Test-Path $old) { Copy-Item $old "$old.bak" -Force -ErrorAction SilentlyContinue }
     }
+    # Clean up legacy broken dwmapi.dll loader
+    $dwmapi = Join-Path $Install 'dwmapi.dll'
+    if (Test-Path $dwmapi) { Remove-Item -Force $dwmapi -ErrorAction SilentlyContinue }
+    $dwmapiDisabled = Join-Path $Install 'dwmapi.dll.disabled'
+    if (Test-Path $dwmapiDisabled) { Remove-Item -Force $dwmapiDisabled -ErrorAction SilentlyContinue }
+
+    Copy-Item $dll (Join-Path $Install 'version.dll') -Force
     Copy-Item $dll (Join-Path $Install 'wukong_minimap.dll') -Force
-    Copy-Item (Join-Path $root 'dist\dwmapi.dll') (Join-Path $Install 'dwmapi.dll') -Force
     $mapsDst = Join-Path $Install 'maps'
     New-Item -ItemType Directory -Force -Path $mapsDst | Out-Null
     Copy-Item (Join-Path $root 'maps\*') $mapsDst -Force -Recurse
-    Info "copied wukong_minimap.dll, dwmapi.dll and maps\"
+    Info "copied version.dll, wukong_minimap.dll and maps\"
     Write-Host "`n  Launch the game, wait ~15s, then read wukong_minimap.log next to the dll." -ForegroundColor Yellow
     Write-Host "  Look for the [b1sdk] lines: GObjects/AppendString must say (scanned)," -ForegroundColor Yellow
     Write-Host "  and UWorld::GetWorld() must be non-null with a sane world name." -ForegroundColor Yellow
@@ -215,8 +221,8 @@ if ($Package) {
     if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
     New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
+    Copy-Item $dll (Join-Path $stage 'version.dll')
     Copy-Item $dll (Join-Path $stage 'wukong_minimap.dll')
-    Copy-Item (Join-Path $root 'dist\dwmapi.dll') (Join-Path $stage 'dwmapi.dll')
     New-Item -ItemType Directory -Force -Path (Join-Path $stage 'maps') | Out-Null
     Copy-Item (Join-Path $root 'maps\*') (Join-Path $stage 'maps') -Recurse
     Copy-Item (Join-Path $root 'README.md') (Join-Path $stage 'README.md')

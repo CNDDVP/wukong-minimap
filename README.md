@@ -130,18 +130,15 @@ Switch language: [English](README.en.md)
 
 本插件包含以下文件：
 
+- `version.dll` 内置原生转发加载器（通过代理系统 version 库原生自加载，不依赖第三方 Loader，彻底解决与 Stardock Groupy、Windows DWM 窗口管理器以及各类 Overlay 注入器的冲突）
 - `wukong_minimap.dll` 插件功能核心文件
-- `dwmapi.dll` 加载器 - 通过代理系统功能来加载 wukong_minimap.dll
 - `maps` 地图文件夹
 
-## 使用 UE4SS 的用户
-
-由于 ue4ss 自带的 `dwmapi.dll` 拦截了系统 api 会导致插件无法顺利加载，
-我们使用 wukong-minimap 中的 dwmapi.dll 就行了。
+> **注意**：如果游戏目录下曾经存在旧版的 `dwmapi.dll`，请务必将其删除，防止旧版代理拦截导致冲突。
 
 ## 卸载
 
-删除 `wukong_minimap.dll` 文件即可
+删除 `version.dll` 和 `wukong_minimap.dll` 文件即可
 
 ## 从源码构建
 
